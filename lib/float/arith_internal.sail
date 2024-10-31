@@ -78,4 +78,29 @@ val      float_is_ge_internal : fp_bits_x2 -> bool
 function float_is_ge_internal ((op_0, op_1))
   = not (float_is_lt_internal ((op_0, op_1)))
 
+val      float_add_internal : forall 'n, 'n in {16, 32, 64, 128}.
+  (bits('n), bits('n)) -> (bits('n), fp_exception_flags)
+function float_add_internal (op_0, op_1) = {
+  let fp_0 = float_decompose (op_0);
+  let fp_1 = float_decompose (op_1);
+  let exp_diff = sub_bits (fp_0.exp, fp_1.exp);
+  let zero_exp_diff = is_all_zeros (exp_diff);
+
+  let bitsize = length (op_0);
+  let sum = if zero_exp_diff & is_all_zeros (fp_0.exp)
+            then op_0 + sail_zero_extend (fp_1.mantissa, bitsize)
+            else if is_all_ones (fp_0.exp)
+                 then op_0
+            else sail_zeros ('n);
+
+  (sum, fp_eflag_none);
+}
+
+val      float_sub_internal : forall 'n, 'n in {16, 32, 64, 128}.
+  (bits('n), bits('n)) -> (bits('n), fp_exception_flags)
+function float_sub_internal (op_0, op_1) = {
+  let diff = op_0;
+  (diff, fp_eflag_none);
+}
+
 $endif
