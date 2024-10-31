@@ -79,6 +79,7 @@ function float_add_internal (op_0, op_1) = {
 val      float_sub_internal : forall 'n, 'n in {16, 32, 64, 128}.
   (bits('n), bits('n)) -> (bits('n), fp_exception_flags)
 function float_sub_internal (op_0, op_1) = {
+  // ToDo(panli): Placeholder, will take care of it soon.
   let diff = op_0;
   (diff, fp_eflag_none);
 }
