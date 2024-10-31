@@ -41,28 +41,7 @@
 (*  Technology) under DARPA/AFRL contracts FA8650-18-C-7809 ("CIFV")        *)
 (*  and FA8750-10-C-0237 ("CTSRD").                                         *)
 (*                                                                          *)
-(*  Redistribution and use in source and binary forms, with or without      *)
-(*  modification, are permitted provided that the following conditions      *)
-(*  are met:                                                                *)
-(*  1. Redistributions of source code must retain the above copyright       *)
-(*     notice, this list of conditions and the following disclaimer.        *)
-(*  2. Redistributions in binary form must reproduce the above copyright    *)
-(*     notice, this list of conditions and the following disclaimer in      *)
-(*     the documentation and/or other materials provided with the           *)
-(*     distribution.                                                        *)
-(*                                                                          *)
-(*  THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS''      *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED       *)
-(*  TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A         *)
-(*  PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR     *)
-(*  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,            *)
-(*  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT        *)
-(*  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF        *)
-(*  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND     *)
-(*  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,      *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT      *)
-(*  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF      *)
-(*  SUCH DAMAGE.                                                            *)
+(*  SPDX-License-Identifier: BSD-2-Clause                                   *)
 (****************************************************************************)
 
 open Ast
@@ -149,6 +128,7 @@ module Name = struct
     | Have_exception n, Have_exception m -> compare n m
     | Current_exception n, Current_exception m -> compare n m
     | Return n, Return m -> compare n m
+    | Memory_writes n, Memory_writes m -> compare n m
     | Channel (c1, n), Channel (c2, m) -> begin
         match (c1, c2) with
         | Chan_stdout, Chan_stdout -> compare n m
@@ -166,6 +146,8 @@ module Name = struct
     | _, Throw_location _ -> -1
     | Return _, _ -> 1
     | _, Return _ -> -1
+    | Memory_writes _, _ -> 1
+    | _, Memory_writes _ -> -1
 end
 
 module NameSet = Set.Make (Name)
@@ -220,6 +202,7 @@ let string_of_name ?deref_current_exception:(dce = false) ?(zencode = true) =
   | Current_exception n when dce -> "(*current_exception)" ^ ssa_num n
   | Current_exception n -> "current_exception" ^ ssa_num n
   | Throw_location n -> "throw_location" ^ ssa_num n
+  | Memory_writes n -> "memory_writes" ^ ssa_num n
   | Channel (chan, n) -> (
       match chan with Chan_stdout -> "stdout" ^ ssa_num n | Chan_stderr -> "stderr" ^ ssa_num n
     )
@@ -274,6 +257,7 @@ let rec string_of_ctyp = function
   | CT_bool -> "%bool"
   | CT_real -> "%real"
   | CT_string -> "%string"
+  | CT_memory_writes -> "%memory_writes"
   | CT_tup ctyps -> "(" ^ Util.string_of_list ", " string_of_ctyp ctyps ^ ")"
   | CT_struct (id, _fields) -> "%struct " ^ Util.zencode_string (string_of_id id)
   | CT_enum (id, _) -> "%enum " ^ Util.zencode_string (string_of_id id)
@@ -405,7 +389,7 @@ let string_of_instr i = Document.to_string (doc_instr i)
 
 let rec map_ctyp f = function
   | ( CT_lint | CT_fint _ | CT_constant _ | CT_lbits | CT_fbits _ | CT_sbits _ | CT_float _ | CT_rounding_mode | CT_bit
-    | CT_unit | CT_bool | CT_real | CT_string | CT_poly _ | CT_enum _ ) as ctyp ->
+    | CT_unit | CT_bool | CT_real | CT_string | CT_poly _ | CT_enum _ | CT_memory_writes ) as ctyp ->
       f ctyp
   | CT_tup ctyps -> f (CT_tup (List.map (map_ctyp f) ctyps))
   | CT_ref ctyp -> f (CT_ref (map_ctyp f ctyp))
@@ -420,7 +404,7 @@ let rec ctyp_has pred ctyp =
   ||
   match ctyp with
   | CT_lint | CT_fint _ | CT_constant _ | CT_lbits | CT_fbits _ | CT_sbits _ | CT_float _ | CT_rounding_mode | CT_bit
-  | CT_unit | CT_bool | CT_real | CT_string | CT_poly _ | CT_enum _ ->
+  | CT_unit | CT_bool | CT_real | CT_string | CT_poly _ | CT_enum _ | CT_memory_writes ->
       false
   | CT_tup ctyps -> List.exists (ctyp_has pred) ctyps
   | CT_ref ctyp | CT_vector ctyp | CT_fvector (_, ctyp) | CT_list ctyp -> ctyp_has pred ctyp
@@ -531,6 +515,9 @@ let rec ctyp_compare ctyp1 ctyp2 =
   | CT_enum _, _ -> 1
   | _, CT_enum _ -> -1
   | CT_rounding_mode, CT_rounding_mode -> 0
+  | CT_rounding_mode, _ -> 1
+  | _, CT_rounding_mode -> -1
+  | CT_memory_writes, CT_memory_writes -> 0
 
 module CT = struct
   type t = ctyp
@@ -569,6 +556,7 @@ let rec ctyp_suprema = function
   | CT_string -> CT_string
   | CT_float n -> CT_float n
   | CT_rounding_mode -> CT_rounding_mode
+  | CT_memory_writes -> CT_memory_writes
   | CT_enum (id, ids) -> CT_enum (id, ids)
   (* Do we really never want to never call ctyp_suprema on constructor
      fields?  Doing it causes issues for structs (see
@@ -630,7 +618,7 @@ let rec ctyp_ids = function
   | CT_tup ctyps -> List.fold_left (fun ids ctyp -> IdSet.union (ctyp_ids ctyp) ids) IdSet.empty ctyps
   | CT_vector ctyp | CT_fvector (_, ctyp) | CT_list ctyp | CT_ref ctyp -> ctyp_ids ctyp
   | CT_lint | CT_fint _ | CT_constant _ | CT_lbits | CT_fbits _ | CT_sbits _ | CT_unit | CT_bool | CT_real | CT_bit
-  | CT_string | CT_poly _ | CT_float _ | CT_rounding_mode ->
+  | CT_string | CT_poly _ | CT_float _ | CT_rounding_mode | CT_memory_writes ->
       IdSet.empty
 
 let rec subst_poly substs = function
@@ -643,12 +631,12 @@ let rec subst_poly substs = function
   | CT_variant (id, ctors) -> CT_variant (id, List.map (fun (ctor_id, ctyp) -> (ctor_id, subst_poly substs ctyp)) ctors)
   | CT_struct (id, fields) -> CT_struct (id, List.map (fun (ctor_id, ctyp) -> (ctor_id, subst_poly substs ctyp)) fields)
   | ( CT_lint | CT_fint _ | CT_constant _ | CT_unit | CT_bool | CT_bit | CT_string | CT_real | CT_lbits | CT_fbits _
-    | CT_sbits _ | CT_enum _ | CT_float _ | CT_rounding_mode ) as ctyp ->
+    | CT_sbits _ | CT_enum _ | CT_float _ | CT_rounding_mode | CT_memory_writes ) as ctyp ->
       ctyp
 
 let rec is_polymorphic = function
   | CT_lint | CT_fint _ | CT_constant _ | CT_lbits | CT_fbits _ | CT_sbits _ | CT_bit | CT_unit | CT_bool | CT_real
-  | CT_string | CT_float _ | CT_rounding_mode ->
+  | CT_string | CT_float _ | CT_rounding_mode | CT_memory_writes ->
       false
   | CT_tup ctyps -> List.exists is_polymorphic ctyps
   | CT_enum _ -> false

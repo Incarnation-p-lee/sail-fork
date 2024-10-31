@@ -41,28 +41,7 @@
 /*  Technology) under DARPA/AFRL contracts FA8650-18-C-7809 ("CIFV")        */
 /*  and FA8750-10-C-0237 ("CTSRD").                                         */
 /*                                                                          */
-/*  Redistribution and use in source and binary forms, with or without      */
-/*  modification, are permitted provided that the following conditions      */
-/*  are met:                                                                */
-/*  1. Redistributions of source code must retain the above copyright       */
-/*     notice, this list of conditions and the following disclaimer.        */
-/*  2. Redistributions in binary form must reproduce the above copyright    */
-/*     notice, this list of conditions and the following disclaimer in      */
-/*     the documentation and/or other materials provided with the           */
-/*     distribution.                                                        */
-/*                                                                          */
-/*  THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS''      */
-/*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED       */
-/*  TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A         */
-/*  PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR     */
-/*  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,            */
-/*  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT        */
-/*  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF        */
-/*  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND     */
-/*  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,      */
-/*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT      */
-/*  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF      */
-/*  SUCH DAMAGE.                                                            */
+/*  SPDX-License-Identifier: BSD-2-Clause                                   */
 /*==========================================================================*/
 
 $ifndef _ARITH
@@ -75,7 +54,7 @@ $include <flow.sail>
 val add_atom = pure {ocaml: "add_int", interpreter: "add_int", lem: "integerAdd", coq: "Z.add", _: "add_int"} : forall 'n 'm.
   (int('n), int('m)) -> int('n + 'm)
 
-val add_int = pure {ocaml: "add_int", interpreter: "add_int", lem: "integerAdd", coq: "Z.add", _: "add_int"} : (int, int) -> int
+val add_int = pure {ocaml: "add_int", interpreter: "add_int", lem: "integerAdd", coq: "Z.add",lean: "Int.add",  _: "add_int"} : (int, int) -> int
 
 overload operator + = {add_atom, add_int}
 
@@ -84,7 +63,7 @@ overload operator + = {add_atom, add_int}
 val sub_atom = pure {ocaml: "sub_int", interpreter: "sub_int", lem: "integerMinus", coq: "Z.sub", _: "sub_int"} : forall 'n 'm.
   (int('n), int('m)) -> int('n - 'm)
 
-val sub_int = pure {ocaml: "sub_int", interpreter: "sub_int", lem: "integerMinus", coq: "Z.sub", _: "sub_int"} : (int, int) -> int
+val sub_int = pure {ocaml: "sub_int", interpreter: "sub_int", lem: "integerMinus", coq: "Z.sub", lean: "Int.sub", _: "sub_int"} : (int, int) -> int
 
 overload operator - = {sub_atom, sub_int}
 
@@ -99,7 +78,7 @@ val sub_nat = pure {
 
 val negate_atom = pure {ocaml: "negate", interpreter: "negate", lem: "integerNegate", coq: "Z.opp", _: "neg_int"} : forall 'n. int('n) -> int(- 'n)
 
-val negate_int = pure {ocaml: "negate", interpreter: "negate", lem: "integerNegate", coq: "Z.opp", _: "neg_int"} : int -> int
+val negate_int = pure {ocaml: "negate", interpreter: "negate", lem: "integerNegate", coq: "Z.opp", lean: "Int.neg", _: "neg_int"} : int -> int
 
 overload negate = {negate_atom, negate_int}
 
@@ -108,7 +87,7 @@ overload negate = {negate_atom, negate_int}
 val mult_atom = pure {ocaml: "mult", interpreter: "mult", lem: "integerMult", coq: "Z.mul", _: "mult_int"} : forall 'n 'm.
   (int('n), int('m)) -> int('n * 'm)
 
-val mult_int = pure {ocaml: "mult", interpreter: "mult", lem: "integerMult", coq: "Z.mul", _: "mult_int"} : (int, int) -> int
+val mult_int = pure {ocaml: "mult", interpreter: "mult", lem: "integerMult", coq: "Z.mul", lean: "Int.mul", _: "mult_int"} : (int, int) -> int
 
 overload operator * = {mult_atom, mult_int}
 
@@ -165,7 +144,8 @@ val tdiv_int = pure {
   interpreter: "tdiv_int",
   lem: "tdiv_int",
   c: "tdiv_int",
-  coq: "Z.quot"
+  coq: "Z.quot",
+  lean: "Int.tdiv"
 } : (int, int) -> int
 
 /*! Remainder for truncating division (has sign of dividend) */
@@ -174,6 +154,7 @@ val _tmod_int = pure {
   interpreter: "tmod_int",
   lem: "tmod_int",
   coq: "Z.rem",
+  lean: "Int.tmod",
   c: "tmod_int"
 } : (int, int) -> int
 
@@ -183,6 +164,7 @@ val _tmod_int_positive = pure {
   interpreter: "tmod_int",
   lem: "tmod_int",
   coq: "Z.rem",
+  lean: "Int.tmod",
   _: "tmod_int"
 } : forall 'n, 'n >= 1. (int, int('n)) -> nat
 

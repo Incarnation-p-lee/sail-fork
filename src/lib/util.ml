@@ -41,28 +41,7 @@
 (*  Technology) under DARPA/AFRL contracts FA8650-18-C-7809 ("CIFV")        *)
 (*  and FA8750-10-C-0237 ("CTSRD").                                         *)
 (*                                                                          *)
-(*  Redistribution and use in source and binary forms, with or without      *)
-(*  modification, are permitted provided that the following conditions      *)
-(*  are met:                                                                *)
-(*  1. Redistributions of source code must retain the above copyright       *)
-(*     notice, this list of conditions and the following disclaimer.        *)
-(*  2. Redistributions in binary form must reproduce the above copyright    *)
-(*     notice, this list of conditions and the following disclaimer in      *)
-(*     the documentation and/or other materials provided with the           *)
-(*     distribution.                                                        *)
-(*                                                                          *)
-(*  THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS''      *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED       *)
-(*  TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A         *)
-(*  PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR     *)
-(*  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,            *)
-(*  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT        *)
-(*  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF        *)
-(*  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND     *)
-(*  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,      *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT      *)
-(*  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF      *)
-(*  SUCH DAMAGE.                                                            *)
+(*  SPDX-License-Identifier: BSD-2-Clause                                   *)
 (****************************************************************************)
 
 (**************************************************************************)
@@ -613,3 +592,8 @@ let close_output_with_check (o, temp_file_name, opt_dir, file_name) =
   let do_replace = !always_replace_files || not (same_content_files temp_file_name file_name) in
   let _ = if not do_replace then Sys.remove temp_file_name else move_file temp_file_name file_name in
   ()
+
+let to_upper_camel_case s =
+  let ss = String.split_on_char '_' s |> List.map (String.split_on_char '-') |> List.concat in
+  let ss = List.map String.capitalize_ascii ss in
+  String.concat "" ss

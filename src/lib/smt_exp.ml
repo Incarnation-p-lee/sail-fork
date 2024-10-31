@@ -41,28 +41,7 @@
 (*  Technology) under DARPA/AFRL contracts FA8650-18-C-7809 ("CIFV")        *)
 (*  and FA8750-10-C-0237 ("CTSRD").                                         *)
 (*                                                                          *)
-(*  Redistribution and use in source and binary forms, with or without      *)
-(*  modification, are permitted provided that the following conditions      *)
-(*  are met:                                                                *)
-(*  1. Redistributions of source code must retain the above copyright       *)
-(*     notice, this list of conditions and the following disclaimer.        *)
-(*  2. Redistributions in binary form must reproduce the above copyright    *)
-(*     notice, this list of conditions and the following disclaimer in      *)
-(*     the documentation and/or other materials provided with the           *)
-(*     distribution.                                                        *)
-(*                                                                          *)
-(*  THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS''      *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED       *)
-(*  TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A         *)
-(*  PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR     *)
-(*  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,            *)
-(*  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT        *)
-(*  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF        *)
-(*  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND     *)
-(*  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,      *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT      *)
-(*  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF      *)
-(*  SUCH DAMAGE.                                                            *)
+(*  SPDX-License-Identifier: BSD-2-Clause                                   *)
 (****************************************************************************)
 
 open Ast_util
@@ -787,7 +766,7 @@ module Simplifier = struct
     | _ -> NoChange
 
   let is_bvfunction = function
-    | "bvnot" | "bvand" | "bvor" | "bvxor" | "bvshl" | "bvlshr" | "bvashr" -> true
+    | "bvnot" | "bvand" | "bvor" | "bvxor" | "bvshl" | "bvlshr" | "bvashr" | "bvadd" | "bvsub" -> true
     | _ -> false
 
   let rule_bvfunction_literal =
@@ -799,6 +778,8 @@ module Simplifier = struct
         | "bvand", [Bitvec_lit lhs; Bitvec_lit rhs] -> change (Bitvec_lit (and_vec lhs rhs))
         | "bvor", [Bitvec_lit lhs; Bitvec_lit rhs] -> change (Bitvec_lit (or_vec lhs rhs))
         | "bvxor", [Bitvec_lit lhs; Bitvec_lit rhs] -> change (Bitvec_lit (xor_vec lhs rhs))
+        | "bvadd", [Bitvec_lit lhs; Bitvec_lit rhs] -> change (Bitvec_lit (add_vec lhs rhs))
+        | "bvsub", [Bitvec_lit lhs; Bitvec_lit rhs] -> change (Bitvec_lit (sub_vec lhs rhs))
         | "bvshl", [lhs; Bitvec_lit rhs] when bv_is_zero rhs -> change lhs
         | "bvshl", [Bitvec_lit lhs; Bitvec_lit rhs] -> begin
             match sint_maybe rhs with Some shift -> change (Bitvec_lit (shiftl lhs shift)) | None -> NoChange

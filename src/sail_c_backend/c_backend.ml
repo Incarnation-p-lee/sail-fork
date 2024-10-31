@@ -41,28 +41,7 @@
 (*  Technology) under DARPA/AFRL contracts FA8650-18-C-7809 ("CIFV")        *)
 (*  and FA8750-10-C-0237 ("CTSRD").                                         *)
 (*                                                                          *)
-(*  Redistribution and use in source and binary forms, with or without      *)
-(*  modification, are permitted provided that the following conditions      *)
-(*  are met:                                                                *)
-(*  1. Redistributions of source code must retain the above copyright       *)
-(*     notice, this list of conditions and the following disclaimer.        *)
-(*  2. Redistributions in binary form must reproduce the above copyright    *)
-(*     notice, this list of conditions and the following disclaimer in      *)
-(*     the documentation and/or other materials provided with the           *)
-(*     distribution.                                                        *)
-(*                                                                          *)
-(*  THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS''      *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED       *)
-(*  TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A         *)
-(*  PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR     *)
-(*  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,            *)
-(*  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT        *)
-(*  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF        *)
-(*  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND     *)
-(*  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,      *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT      *)
-(*  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF      *)
-(*  SUCH DAMAGE.                                                            *)
+(*  SPDX-License-Identifier: BSD-2-Clause                                   *)
 (****************************************************************************)
 
 open Libsail
@@ -146,6 +125,7 @@ let rec is_stack_ctyp ctyp =
   | CT_float _ -> true
   | CT_rounding_mode -> true
   | CT_constant n -> Big_int.less_equal (min_int 64) n && Big_int.greater_equal n (max_int 64)
+  | CT_memory_writes -> false
 
 let v_mask_lower i = V_lit (VL_bits (Util.list_init i (fun _ -> Sail2_values.B1)), CT_fbits i)
 
@@ -208,6 +188,7 @@ let rec sgen_ctyp_name = function
   | CT_ref ctyp -> "ref_" ^ sgen_ctyp_name ctyp
   | CT_float n -> "float" ^ string_of_int n
   | CT_rounding_mode -> "rounding_mode"
+  | CT_memory_writes -> "sail_memory_writes"
   | CT_poly _ -> "POLY" (* c_error "Tried to generate code for non-monomorphic type" *)
 
 let sail_create ?(prefix = "") ?(suffix = "") ctyp fmt =
@@ -938,6 +919,7 @@ let rec sgen_ctyp = function
   | CT_ref ctyp -> sgen_ctyp ctyp ^ "*"
   | CT_float n -> "float" ^ string_of_int n ^ "_t"
   | CT_rounding_mode -> "uint_fast8_t"
+  | CT_memory_writes -> "sail_memory_writes"
   | CT_poly _ -> "POLY" (* c_error "Tried to generate code for non-monomorphic type" *)
 
 let sgen_const_ctyp = function CT_string -> "const_sail_string" | ty -> sgen_ctyp ty
@@ -1114,6 +1096,7 @@ let rec sgen_clexp l = function
   | CL_id (Have_exception _, _) -> "have_exception"
   | CL_id (Current_exception _, _) -> "current_exception"
   | CL_id (Throw_location _, _) -> "throw_location"
+  | CL_id (Memory_writes _, _) -> "memory_writes"
   | CL_id (Channel _, _) -> Reporting.unreachable l __POS__ "CL_id Channel should not appear in C backend"
   | CL_id (Return _, _) -> Reporting.unreachable l __POS__ "CL_id Return should have been removed"
   | CL_id (Name (id, _), _) -> "&" ^ sgen_id id
@@ -1127,6 +1110,7 @@ let rec sgen_clexp_pure l = function
   | CL_id (Have_exception _, _) -> "have_exception"
   | CL_id (Current_exception _, _) -> "current_exception"
   | CL_id (Throw_location _, _) -> "throw_location"
+  | CL_id (Memory_writes _, _) -> "memory_writes"
   | CL_id (Channel _, _) -> Reporting.unreachable l __POS__ "CL_id Channel should not appear in C backend"
   | CL_id (Return _, _) -> Reporting.unreachable l __POS__ "CL_id Return should have been removed"
   | CL_id (Name (id, _), _) -> sgen_id id
@@ -2039,7 +2023,7 @@ let rec ctyp_dependencies = function
   | CT_struct (_, ctors) -> List.concat (List.map (fun (_, ctyp) -> ctyp_dependencies ctyp) ctors)
   | CT_variant (_, ctors) -> List.concat (List.map (fun (_, ctyp) -> ctyp_dependencies ctyp) ctors)
   | CT_lint | CT_fint _ | CT_lbits | CT_fbits _ | CT_sbits _ | CT_unit | CT_bool | CT_real | CT_bit | CT_string
-  | CT_enum _ | CT_poly _ | CT_constant _ | CT_float _ | CT_rounding_mode ->
+  | CT_enum _ | CT_poly _ | CT_constant _ | CT_float _ | CT_rounding_mode | CT_memory_writes ->
       []
 
 let codegen_ctg = function

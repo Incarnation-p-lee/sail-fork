@@ -41,28 +41,7 @@
 (*  Technology) under DARPA/AFRL contracts FA8650-18-C-7809 ("CIFV")        *)
 (*  and FA8750-10-C-0237 ("CTSRD").                                         *)
 (*                                                                          *)
-(*  Redistribution and use in source and binary forms, with or without      *)
-(*  modification, are permitted provided that the following conditions      *)
-(*  are met:                                                                *)
-(*  1. Redistributions of source code must retain the above copyright       *)
-(*     notice, this list of conditions and the following disclaimer.        *)
-(*  2. Redistributions in binary form must reproduce the above copyright    *)
-(*     notice, this list of conditions and the following disclaimer in      *)
-(*     the documentation and/or other materials provided with the           *)
-(*     distribution.                                                        *)
-(*                                                                          *)
-(*  THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS''      *)
-(*  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED       *)
-(*  TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A         *)
-(*  PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR     *)
-(*  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,            *)
-(*  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT        *)
-(*  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF        *)
-(*  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND     *)
-(*  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,      *)
-(*  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT      *)
-(*  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF      *)
-(*  SUCH DAMAGE.                                                            *)
+(*  SPDX-License-Identifier: BSD-2-Clause                                   *)
 (****************************************************************************)
 
 open Ast
@@ -1300,6 +1279,8 @@ type tannot = tannot' option * uannot
 
 type typed_def = (tannot, env) def
 type typed_ast = (tannot, env) ast
+type typed_lazy_def = (tannot, env) lazy_def
+type typed_lazy_ast = (tannot, env) lazy_ast
 
 let untyped_annot tannot = snd tannot
 
@@ -2058,6 +2039,10 @@ type ('a, 'b) pattern_functions = {
   get_loc_typed : 'b -> l;
 }
 
+type ('a, 'b, 'c) function_arg_result = Arg_ok of 'a | Arg_error of 'b | Arg_defer of 'c
+
+let is_arg_defer = function Arg_defer _ -> true | _ -> false
+
 type ('a, 'b) vector_concat_elem = VC_elem_ok of 'a | VC_elem_error of 'b * exn | VC_elem_unknown of 'a
 
 let unwrap_vector_concat_elem ~at:l = function
@@ -2176,6 +2161,8 @@ let rec check_exp env (E_aux (exp_aux, (l, uannot)) as exp : uannot exp) (Typ_au
             (E_let (LB_aux (LB_val (tpat, inferred_bind), (let_loc, empty_tannot)), crule check_exp inner_env exp typ))
             (check_shadow_leaks l inner_env env typ)
     end
+  | E_vector_append (v1, E_aux (E_vector [], _)), _ -> check_exp env v1 typ
+  | E_vector_append (v1, v2), _ -> check_exp env (E_aux (E_app (mk_id "append", [v1; v2]), (l, uannot))) typ
   | E_app_infix (x, op, y), _ -> check_exp env (E_aux (E_app (deinfix op, [x; y]), (l, uannot))) typ
   | E_app (f, [E_aux (E_constraint nc, _)]), _ when string_of_id f = "_prove" ->
       Env.wf_constraint ~at:l env nc;
@@ -2232,7 +2219,7 @@ let rec check_exp env (E_aux (exp_aux, (l, uannot)) as exp : uannot exp) (Typ_au
       let rec try_overload = function
         | errs, [] -> typ_raise l (Err_no_overloading (orig_f, errs))
         | errs, f :: fs -> begin
-            typ_print (lazy ("Overload: " ^ string_of_id f ^ "(" ^ string_of_list ", " string_of_exp xs ^ ")"));
+            typ_print (lazy ("Check overload: " ^ string_of_id f ^ "(" ^ string_of_list ", " string_of_exp xs ^ ")"));
             try crule check_exp env (E_aux (E_app (f, xs), (l, add_overload_attribute l orig_f uannot))) typ
             with Type_error (err_l, err) ->
               typ_debug (lazy "Error");
@@ -3377,7 +3364,7 @@ and infer_lexp env (LE_aux (lexp_aux, (l, uannot)) as lexp) =
         | Typ_app (id, [A_aux (A_nexp len, _); A_aux (A_typ elem_typ, _)]) when Id.compare id (mk_id "vector") = 0 ->
             typ_equality l env elem_typ first_elem_typ;
             nsum acc len
-        | _ -> typ_error l "Vector concatentation l-expression must only contain vector types of the same order"
+        | _ -> typ_error l "Vector concatenation l-expression must only contain vector types of the same order"
       in
       let sum_bitvector_lengths acc (Typ_aux (v_typ_aux, _)) =
         match v_typ_aux with
@@ -3397,7 +3384,7 @@ and infer_lexp env (LE_aux (lexp_aux, (l, uannot)) as lexp) =
           annot_lexp (LE_vector_concat (inferred_v_lexp :: inferred_v_lexps)) (bitvector_typ (nexp_simp len))
       | _ ->
           typ_error l
-            ("Vector concatentation l-expression must only contain bitvector or vector types, found "
+            ("Vector concatenation l-expression must only contain bitvector or vector types, found "
            ^ string_of_typ v_typ
             )
     end
@@ -3551,7 +3538,7 @@ and infer_exp env (E_aux (exp_aux, (l, uannot)) as exp) =
       let rec try_overload = function
         | errs, [] -> typ_raise l (Err_no_overloading (orig_f, errs))
         | errs, f :: fs -> begin
-            typ_print (lazy ("Overload: " ^ string_of_id f ^ "(" ^ string_of_list ", " string_of_exp xs ^ ")"));
+            typ_print (lazy ("Infer overload: " ^ string_of_id f ^ "(" ^ string_of_list ", " string_of_exp xs ^ ")"));
             try irule infer_exp env (E_aux (E_app (f, xs), (l, add_overload_attribute l orig_f uannot)))
             with Type_error (err_l, err) ->
               typ_debug (lazy "Error");
@@ -3858,7 +3845,15 @@ and infer_funapp' l env f (typq, f_typ) xs uannot expected_ret_typ =
         else ([], List.map implicit_to_int typ_args, xs)
   in
 
-  let typ_args =
+  typ_debug
+    ( lazy
+      (Option.fold ~none:"No expected return"
+         ~some:(fun typ -> Printf.sprintf "Expected return %s" (string_of_typ typ))
+         expected_ret_typ
+      )
+      );
+
+  let instantiate_return_type typ_args =
     match expected_ret_typ with
     | None -> typ_args
     | Some expect when is_exist (Env.expand_synonyms env expect) -> typ_args
@@ -3882,14 +3877,16 @@ and infer_funapp' l env f (typq, f_typ) xs uannot expected_ret_typ =
       )
   in
 
+  let typ_args = instantiate_return_type typ_args in
+
   (* We now iterate throught the function arguments, checking them and
      instantiating quantifiers. *)
   let instantiate env arg typ remaining_typs =
     if KidSet.for_all (is_bound env) (tyvars_of_typ typ) then (
       try
         let checked_exp = crule check_exp env arg typ in
-        Ok (checked_exp, remaining_typs, env)
-      with Type_error (l, err) -> Error (l, 0, Err_function_arg (exp_loc arg, typ, err))
+        Arg_ok (checked_exp, remaining_typs, env)
+      with Type_error (l, err) -> Arg_error (l, 0, Err_function_arg (exp_loc arg, typ, err))
     )
     else (
       let goals = quant_kopts (mk_typquant !quants) |> List.map kopt_kid |> KidSet.of_list in
@@ -3898,8 +3895,8 @@ and infer_funapp' l env f (typq, f_typ) xs uannot expected_ret_typ =
          as it provides a heuristic for how likely any error is in a
          function overloading *)
       match can_unify_with env goals (irule infer_exp env arg) typ with
-      | exception Unification_error (l, m) -> Error (l, 1, Err_function_arg (exp_loc arg, typ, Err_other m))
-      | exception Type_error (l, err) -> Error (l, 0, Err_function_arg (exp_loc arg, typ, err))
+      | exception Unification_error (l, m) -> Arg_defer (l, 1, Err_function_arg (exp_loc arg, typ, Err_other m))
+      | exception Type_error (l, err) -> Arg_defer (l, 0, Err_function_arg (exp_loc arg, typ, err))
       | inferred_arg, unifiers, env ->
           record_unifiers unifiers;
           let unifiers = KBindings.bindings unifiers in
@@ -3911,27 +3908,50 @@ and infer_funapp' l env f (typq, f_typ) xs uannot expected_ret_typ =
               );
           List.iter (fun unifier -> quants := instantiate_quants !quants unifier) unifiers;
           List.iter (fun (v, arg) -> typ_ret := typ_subst v arg !typ_ret) unifiers;
+          let remaining_typs = instantiate_return_type remaining_typs in
           let remaining_typs =
             List.map (fun typ -> List.fold_left (fun typ (v, arg) -> typ_subst v arg typ) typ unifiers) remaining_typs
           in
-          Ok (inferred_arg, remaining_typs, env)
+          Arg_ok (inferred_arg, remaining_typs, env)
     )
   in
-  let fold_instantiate (xs, args, env) x =
-    match args with
-    | arg :: remaining_args -> (
-        match instantiate env x arg remaining_args with
-        | Ok (x, remaining_args, env) -> (Ok x :: xs, remaining_args, env)
-        | Error (l, h, m) -> (Error (l, h, m) :: xs, remaining_args, env)
-      )
-    | [] -> raise (Reporting.err_unreachable l __POS__ "Empty arguments during instantiation")
+
+  (* We don't know the best order to check function arguments in order to instantiate the quantifiers, so we
+     iterate until we reach a fixpoint *)
+  let rec do_instantiation ~previously_deferred env xs typ_args =
+    let fold_instantiate (xs, typs, env, deferred) (n, x) =
+      match typs with
+      | typ :: remaining_typs -> (
+          match instantiate env x typ remaining_typs with
+          | Arg_ok (x, remaining_typs, env) -> ((n, Arg_ok x) :: xs, remaining_typs, env, deferred)
+          | Arg_defer (l, h, m) ->
+              typ_debug (lazy (Printf.sprintf "Deferring %s : %s" (string_of_exp x) (string_of_typ typ)));
+              ((n, Arg_defer (l, h, m)) :: xs, remaining_typs @ [typ], env, deferred @ [(n, x)])
+          | Arg_error (l, h, m) -> ((n, Arg_error (l, h, m)) :: xs, remaining_typs, env, deferred)
+        )
+      | [] -> raise (Reporting.err_unreachable l __POS__ "Empty arguments during instantiation")
+    in
+    let xs, typ_args, env, deferred = List.fold_left fold_instantiate ([], typ_args, env, []) xs in
+    let num_deferred = List.length deferred in
+    typ_debug (lazy (Printf.sprintf "Have %d deferred arguments" num_deferred));
+    if num_deferred = previously_deferred then (xs, env)
+    else (
+      let ys, env = do_instantiation ~previously_deferred:num_deferred env deferred typ_args in
+      (List.filter (fun (_, result) -> not (is_arg_defer result)) xs @ ys, env)
+    )
   in
-  let xs, _, env = List.fold_left fold_instantiate ([], typ_args, env) xs in
+  let xs, env = do_instantiation ~previously_deferred:0 env (List.mapi (fun n x -> (n, x)) xs) typ_args in
+  let xs = List.fast_sort (fun (n, _) (m, _) -> Int.compare m n) xs |> List.map snd in
   let xs, instantiate_errors =
     List.fold_left
-      (fun (acc, errs) x -> match x with Ok x -> (x :: acc, errs) | Error (l, h, m) -> (acc, (l, h, m) :: errs))
+      (fun (acc, errs) x ->
+        match x with
+        | Arg_ok x -> (x :: acc, errs)
+        | Arg_defer (l, h, m) | Arg_error (l, h, m) -> (acc, (l, h, m) :: errs)
+      )
       ([], []) xs
   in
+  typ_debug (lazy (Printf.sprintf "Have %d instantiation errors" (List.length instantiate_errors)));
   begin
     match instantiate_errors with
     | [] -> ()
@@ -4475,7 +4495,7 @@ let check_funcls_complete l env funcls typ =
 
 let empty_tannot_opt = Typ_annot_opt_aux (Typ_annot_opt_none, Parse_ast.Unknown)
 
-let check_fundef env def_annot (FD_aux (FD_function (recopt, tannot_opt, funcls), (l, _))) =
+let check_fundef_lazy env def_annot (FD_aux (FD_function (recopt, tannot_opt, funcls), (l, _))) =
   let id =
     match
       List.fold_right
@@ -4503,7 +4523,7 @@ let check_fundef env def_annot (FD_aux (FD_function (recopt, tannot_opt, funcls)
         (* No val, so get the function type from annotations attached to clauses *)
         let bind = infer_funtyp l env tannot_opt funcls in
         (None, bind, env)
-    | exception Type_error (l, Err_not_in_scope (_, scope_l, item_scope, into_scope, priv)) ->
+    | exception Type_error (l, Err_not_in_scope (_, scope_l, item_scope, into_scope, is_opened, priv)) ->
         (* If we defined the function type with val in another module, but didn't require it. *)
         let reason = if priv then "private." else "not in scope." in
         typ_raise l
@@ -4512,6 +4532,7 @@ let check_fundef env def_annot (FD_aux (FD_function (recopt, tannot_opt, funcls)
                scope_l,
                item_scope,
                into_scope,
+               is_opened,
                priv
              )
           )
@@ -4562,20 +4583,27 @@ let check_fundef env def_annot (FD_aux (FD_function (recopt, tannot_opt, funcls)
       ([synthesize_val_spec env id quant typ def_annot], Env.add_val_spec id (quant, typ) env)
     else ([], env)
   in
-  let funcls = List.map (fun funcl -> check_funcl funcl_env funcl typ) funcls in
-  let funcls, update_attr =
-    if
-      Option.is_some (get_def_attribute "complete" def_annot)
-      || Option.is_some (get_def_attribute "incomplete" def_annot)
-    then (funcls, fun attrs -> attrs)
-    else check_funcls_complete l funcl_env funcls typ
+  (* For performance, we can lazily check the body if we need it later *)
+  let check_body =
+    lazy
+      (let funcls = List.map (fun funcl -> check_funcl funcl_env funcl typ) funcls in
+       let funcls, update_attr =
+         if
+           Option.is_some (get_def_attribute "complete" def_annot)
+           || Option.is_some (get_def_attribute "incomplete" def_annot)
+         then (funcls, fun attrs -> attrs)
+         else check_funcls_complete l funcl_env funcls typ
+       in
+       let def_annot = fix_body_visibility (update_attr def_annot) in
+       DEF_aux (DEF_fundef (FD_aux (FD_function (recopt, empty_tannot_opt, funcls), (l, empty_tannot))), def_annot)
+      )
   in
-  let def_annot = fix_body_visibility (update_attr def_annot) in
   let env = Env.define_val_spec id env in
-  ( vs_def
-    @ [DEF_aux (DEF_fundef (FD_aux (FD_function (recopt, empty_tannot_opt, funcls), (l, empty_tannot))), def_annot)],
-    env
-  )
+  (vs_def, id, check_body, env)
+
+let check_fundef env def_annot fdef =
+  let vs_def, _, check_body, env = check_fundef_lazy env def_annot fdef in
+  (vs_def @ [Lazy.force check_body], env)
 
 let check_mapdef env def_annot (MD_aux (MD_mapping (id, tannot_opt, mapcls), (l, _))) =
   typ_print (lazy ("\nChecking mapping " ^ string_of_id id));
@@ -5141,8 +5169,19 @@ and check_def : Env.t -> untyped_def -> typed_def list * Env.t =
       (* These will be checked during the move_loop_measures rewrite *)
       ([DEF_aux (DEF_loop_measures (id, measures), def_annot)], env)
 
-and check_defs_progress : int -> int -> Env.t -> untyped_def list -> typed_def list * Env.t =
- fun n total env defs ->
+and check_def_lazy env def =
+  match def with
+  | DEF_aux (DEF_fundef fdef, def_annot) ->
+      let def_annot = def_annot_map_env (fun _ -> env) def_annot in
+      let vs_def, id, check_body, env = check_fundef_lazy env def_annot fdef in
+      (List.map (fun def -> Strict_def def) vs_def @ [Lazy_fundef (id, check_body)], env)
+  | _ ->
+      let defs, env = check_def env def in
+      (List.map (fun def -> Strict_def def) defs, env)
+
+and check_defs_progress :
+      'a. (Env.t -> untyped_def -> 'a list * Env.t) -> int -> int -> Env.t -> untyped_def list -> 'a list * Env.t =
+ fun checker n total env defs ->
   let rec aux n total acc env defs =
     match defs with
     | [] -> (List.rev acc, env)
@@ -5162,9 +5201,9 @@ and check_defs_progress : int -> int -> Env.t -> untyped_def list -> typed_def l
         let def, env =
           match get_def_attribute "fix_location" def_annot with
           | Some (fix_l, _) -> (
-              try check_def env def with Type_error (_, err) -> typ_raise fix_l err
+              try checker env def with Type_error (_, err) -> typ_raise fix_l err
             )
-          | None -> check_def env def
+          | None -> checker env def
         in
         aux (n + 1) total (List.rev def @ acc) (restore env) defs
   in
@@ -5173,13 +5212,19 @@ and check_defs_progress : int -> int -> Env.t -> untyped_def list -> typed_def l
 and check_defs : Env.t -> untyped_def list -> typed_def list * Env.t =
  fun env defs ->
   let total = List.length defs in
-  check_defs_progress 1 total env defs
+  check_defs_progress check_def 1 total env defs
 
 let check : Env.t -> untyped_ast -> typed_ast * Env.t =
  fun env ast ->
   let total = List.length ast.defs in
-  let defs, env = check_defs_progress 1 total env ast.defs in
+  let defs, env = check_defs_progress check_def 1 total env ast.defs in
   ({ ast with defs }, env)
+
+let check_lazy : Env.t -> untyped_ast -> typed_lazy_ast * Env.t =
+ fun env ast ->
+  let total = List.length ast.defs in
+  let defs, env = check_defs_progress check_def_lazy 1 total env ast.defs in
+  ({ lazy_defs = defs; comments = ast.comments }, Env.open_all_modules env)
 
 let rec check_with_envs : Env.t -> untyped_def list -> (typed_def list * Env.t) list =
  fun env defs ->
