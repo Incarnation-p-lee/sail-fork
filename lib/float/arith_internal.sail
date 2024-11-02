@@ -71,7 +71,10 @@ function float_add_internal (op_0, op_1) = {
             then op_0 + sail_zero_extend (fp_1.mantissa, bitsize)
             else if is_all_ones (fp_0.exp)
                  then op_0
-            else sail_zeros ('n);
+            else {
+              assert (false, "Not implemented yet.");
+              sail_zeros ('n);
+            };
 
   (sum, fp_eflag_none);
 }
@@ -79,9 +82,8 @@ function float_add_internal (op_0, op_1) = {
 val      float_sub_internal : forall 'n, 'n in {16, 32, 64, 128}.
   (bits('n), bits('n)) -> (bits('n), fp_exception_flags)
 function float_sub_internal (op_0, op_1) = {
-  // ToDo(panli): Placeholder, will take care of it soon.
-  let diff = op_0;
-  (diff, fp_eflag_none);
+  assert (false, "Not implemented yet.");
+  (sail_zeros ('n), fp_eflag_none);
 }
 
 $endif
